@@ -7,6 +7,14 @@
 - Briefly describe your initial UML design.
 - What classes did you include, and what responsibilities did you assign to each?
 
+A owner should be able to:
+1. add a pet
+2. edit the task (done or not done) (add and delete task)
+4. see if the progress of a task
+6. set time constraint (like being able to block off certain time in a day or even certain days)
+7. some calender system so it's easy to read the layout of how it's proceed 
+8. some kind of time limtation for each task
+
 **b. Design changes**
 
 - Did your design change during implementation?

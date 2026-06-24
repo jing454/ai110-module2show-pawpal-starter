@@ -1,15 +1,49 @@
 classDiagram
-    %% Replace the placeholders below with your actual classes, attributes, methods, and relationships.
-    %% Keep this file updated so it matches your final implementation.
+    %% PawPal+ — pet care planning assistant
+    %% Four core classes: Owner, Pet, Task, Scheduler
 
-    class ClassName {
-        +type attribute
-        +method() returnType
+    class Owner {
+        +str name
+        +list~Pet~ pets
+        +add_pet(pet Pet) void
+        +remove_pet(pet Pet) void
+        +block_time(start datetime, end datetime, reason str) void
+        +list_tasks() list~Task~
     }
 
-    class AnotherClass {
-        +type attribute
-        +method() returnType
+    class Pet {
+        +str name
+        +str species
+        +list~Task~ tasks
+        +add_task(task Task) void
+        +delete_task(task Task) void
+        +edit_task(task Task) void
+        +progress() float
     }
 
-    ClassName --> AnotherClass : relationship
+    class Task {
+        +str title
+        +int duration_minutes
+        +str priority
+        +bool done
+        +datetime scheduled_at
+        +datetime deadline
+        +mark_done() void
+        +mark_undone() void
+        +is_overdue() bool
+    }
+
+    class Scheduler {
+        +list~Task~ tasks
+        +list~dict~ blocked_times
+        +add_blocked_time(start datetime, end datetime, reason str) void
+        +build_schedule(day date) list~Task~
+        +order_by_priority() list~Task~
+        +fits_in_window(task Task) bool
+        +explain() str
+    }
+
+    Owner "1" --> "*" Pet : owns
+    Pet "1" --> "*" Task : has
+    Owner "1" --> "1" Scheduler : sets blocked times
+    Scheduler "1" --> "*" Task : schedules
