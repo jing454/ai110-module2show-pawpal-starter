@@ -54,7 +54,16 @@ Paste a sample of your app's CLI or Streamlit output here so a reader can see wh
 #   ...
 ```
 
-## 🧪 Testing PawPal+
+# Sample
+```
+09:30-09:50  Litter box cleanup (low priority, 20 min)
+
+Scheduled tasks (chronological):
+  08:00  Morning walk - Rex (priority: high)
+  08:45  Feed breakfast - Milo (priority: high)
+  09:00  Evening walk - Rex (priority: medium)
+  09:30  Litter box cleanup - Milo (priority: low)
+```
 
 ```bash
 # Run the full test suite:
