@@ -22,10 +22,26 @@ class Task:
     duration_minutes: int
     priority: str  # "low" | "medium" | "high"
     frequency: str = "daily"  # "once" | "daily" | "weekly"
+    weekday: int | None = None  # 0=Mon .. 6=Sun; which day a "weekly" task recurs on
     done: bool = False
     scheduled_at: datetime | None = None  # start time, set by the Scheduler
     deadline: datetime | None = None
     id: int = field(default_factory=lambda: next(_task_id_counter))
+
+    def is_due_on(self, day: date) -> bool:
+        """True if this task should appear in the plan for `day`.
+
+        daily  -> every day
+        weekly -> only on its anchored weekday (0=Mon..6=Sun)
+        once   -> until it is completed, then it drops off
+        """
+        if self.frequency == "daily":
+            return True
+        if self.frequency == "weekly":
+            return self.weekday is not None and day.weekday() == self.weekday
+        if self.frequency == "once":
+            return not self.done
+        return True  # unknown frequency: fail open rather than hide the task
 
     def mark_done(self) -> None:
         """Mark this task as completed."""
@@ -41,6 +57,38 @@ class Task:
             return False
         return datetime.now() > self.deadline
 
+    def next_occurrence(self, completed_on: date | None = None) -> Task | None:
+        """Build the next instance of a recurring task, or None if it doesn't repeat.
+
+        'daily' tasks come due the next day (today + 1 day); 'weekly' tasks come
+        due seven days later; 'once' (or unknown) tasks do not recur. Dates are
+        advanced with timedelta so month/year rollovers are handled correctly.
+        """
+        if self.frequency == "daily":
+            step = timedelta(days=1)
+        elif self.frequency == "weekly":
+            step = timedelta(weeks=1)  # 7 days
+        else:
+            return None  # "once" or unknown: no follow-up occurrence
+
+        base = completed_on or date.today()
+        next_due = base + step  # timedelta arithmetic rolls months/years over safely
+
+        # Move the deadline's date forward but keep its time-of-day, if one was set.
+        new_deadline = None
+        if self.deadline is not None:
+            new_deadline = datetime.combine(next_due, self.deadline.time())
+
+        # A fresh Task: done defaults False, scheduled_at None, and a new unique id.
+        return Task(
+            title=self.title,
+            duration_minutes=self.duration_minutes,
+            priority=self.priority,
+            frequency=self.frequency,
+            weekday=self.weekday,
+            deadline=new_deadline,
+        )
+
 
 @dataclass
 class Pet:
@@ -53,6 +101,17 @@ class Pet:
     def add_task(self, task: Task) -> None:
         """Add a care task to this pet."""
         self.tasks.append(task)
+
+    def complete_task(self, task: Task) -> Task | None:
+        """Mark a task done and, if it recurs, add its next occurrence to this pet.
+
+        Returns the newly created follow-up task, or None if the task doesn't repeat.
+        """
+        task.mark_done()
+        follow_up = task.next_occurrence()
+        if follow_up is not None:
+            self.add_task(follow_up)
+        return follow_up
 
     def delete_task(self, task: Task) -> None:
         """Remove the task with the matching id (not just a look-alike)."""
@@ -100,8 +159,8 @@ class Scheduler:
         then greedily places each task (highest priority first) into the earliest
         free slot that avoids blocked times and already-placed tasks.
         """
-        # Fresh working set: only tasks that still need doing.
-        self.tasks = [t for t in owner.list_tasks() if not t.done]
+        # Fresh working set: tasks that still need doing AND recur on this day.
+        self.tasks = [t for t in owner.list_tasks() if not t.done and t.is_due_on(day)]
         for t in self.tasks:
             t.scheduled_at = None  # clear any placement from a previous run
 
@@ -128,6 +187,13 @@ class Scheduler:
     def order_by_priority(self, tasks: list[Task]) -> list[Task]:
         """Return tasks sorted high -> low priority."""
         return sorted(tasks, key=lambda t: self.PRIORITY_RANK.get(t.priority, 99))
+
+    def sort_by_time(self, tasks: list[Task]) -> list[Task]:
+        """Return tasks in chronological order by their scheduled start time.
+
+        Unscheduled tasks (scheduled_at is None) sort to the end via datetime.max.
+        """
+        return sorted(tasks, key=lambda t: t.scheduled_at or datetime.max)
 
     def fits_in_window(self, task: Task, start_time: datetime) -> bool:
         """True if placing task at start_time avoids blocked times AND other scheduled tasks.
@@ -156,6 +222,45 @@ class Scheduler:
     def _overlaps(start_a: datetime, end_a: datetime, start_b: datetime, end_b: datetime) -> bool:
         """Two [start, end) intervals overlap iff each begins before the other ends."""
         return start_a < end_b and start_b < end_a
+
+    @staticmethod
+    def by_time(tasks: list[Task]) -> list[Task]:
+        """Return tasks in chronological order; unscheduled tasks sort to the end."""
+        return sorted(tasks, key=lambda t: t.scheduled_at or datetime.max)
+
+    def find_conflicts(self, tasks: list[Task]) -> list[tuple[Task, Task]]:
+        """Return pairs of scheduled tasks whose time windows overlap.
+
+        Sort by start time, then compare each task only to its neighbor: if a task
+        doesn't run into the next one, it can't run into any later one either. That
+        makes this an O(n log n) sweep instead of an O(n^2) all-pairs check.
+        """
+        timed = sorted((t for t in tasks if t.scheduled_at is not None), key=lambda t: t.scheduled_at)
+        conflicts: list[tuple[Task, Task]] = []
+        for earlier, later in zip(timed, timed[1:]):
+            earlier_end = earlier.scheduled_at + timedelta(minutes=earlier.duration_minutes)
+            if earlier_end > later.scheduled_at:  # earlier still running when later starts
+                conflicts.append((earlier, later))
+        return conflicts
+
+    def conflict_warning(self, tasks: list[Task]) -> str:
+        """Return a human-readable warning about overlapping tasks, or '' if none.
+
+        Lightweight: reuses find_conflicts() and just formats the result. It never
+        raises — an empty string means "no conflicts detected", so callers can do
+        `if msg: print(msg)` without any error handling.
+        """
+        conflicts = self.find_conflicts(tasks)
+        if not conflicts:
+            return ""
+
+        lines = [f"WARNING: {len(conflicts)} scheduling conflict(s) detected:"]
+        for earlier, later in conflicts:
+            lines.append(
+                f"  '{earlier.title}' ({earlier.scheduled_at:%H:%M}) overlaps "
+                f"'{later.title}' ({later.scheduled_at:%H:%M})"
+            )
+        return "\n".join(lines)
 
     def explain(self) -> str:
         """Human-readable reasoning for why each task was chosen and when.
@@ -208,3 +313,39 @@ class Owner:
     def list_tasks(self) -> list[Task]:
         """All tasks across all of this owner's pets."""
         return [task for pet in self.pets for task in pet.tasks]
+
+    def mark_task_complete(self, task: Task) -> Task | None:
+        """Find the pet that owns `task`, mark it complete, and spawn any recurrence.
+
+        Returns the follow-up task created for a daily/weekly task, or None if the
+        task doesn't recur or no pet owns it.
+        """
+        for pet in self.pets:
+            if any(t.id == task.id for t in pet.tasks):
+                return pet.complete_task(task)
+        return None
+    
+    def tasks_for_pet(self, pet_name: str) -> list[Task]:
+        """Return all tasks for a specific pet by name."""
+        return [t for p in self.pets if p.name == pet_name for t in p.tasks]
+    
+    def task_by_status(self, done: bool) -> list[Task]:
+        """Return all tasks across all pets filtered by completion status."""
+        return [t for t in self.list_tasks() if t.done == done]
+
+    def filter_tasks(self, pet_name: str | None = None, done: bool | None = None) -> list[Task]:
+        """Filter tasks by pet name and/or completion status.
+
+        Each filter is optional: pass `pet_name` to limit to one pet, `done` to
+        limit by completion status, or both. Omitting a filter (None) leaves it
+        unapplied, so filter_tasks() with no arguments returns every task.
+        """
+        tasks = self.tasks_for_pet(pet_name) if pet_name is not None else self.list_tasks()
+        if done is not None:
+            tasks = [t for t in tasks if t.done == done]
+        return tasks
+
+    def overdue_tasks(self) -> list[Task]:
+        """Return all tasks across all pets that are overdue."""
+        return [t for t in self.list_tasks() if t.is_overdue()]
+

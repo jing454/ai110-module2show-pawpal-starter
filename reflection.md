@@ -55,6 +55,9 @@ progress() (pawpal_system.py:50) is "fraction completed" = done / total. A pet w
 - Describe one tradeoff your scheduler makes.
 - Why is that tradeoff reasonable for this scenario?
 
+The scheduler func is a "first come, first served" by priority. it places the most important task first in the earliest open time. However, one long task can cause this to hog an early slot and end up blocking the 2 short task that couldve fit there instead. This trade off is resonable since important task should always go first since it's usually something needed to be done rather than something that'll be fine even if it isnt done
+
+
 ---
 
 ## 3. AI Collaboration

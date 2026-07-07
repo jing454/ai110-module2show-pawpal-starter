@@ -1,4 +1,12 @@
+from datetime import date
+
 import streamlit as st
+from pawpal_system import Owner, Pet, Scheduler, Task
+
+if "owner" not in st.session_state:
+    st.session_state.owner = Owner("Jordan", scheduler=Scheduler())
+
+owner = st.session_state.owner  # the persistent instance, reused across reruns
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
@@ -46,9 +54,6 @@ species = st.selectbox("Species", ["dog", "cat", "other"])
 st.markdown("### Tasks")
 st.caption("Add a few tasks. In your final version, these should feed into your scheduler.")
 
-if "tasks" not in st.session_state:
-    st.session_state.tasks = []
-
 col1, col2, col3 = st.columns(3)
 with col1:
     task_title = st.text_input("Task title", value="Morning walk")
@@ -57,14 +62,45 @@ with col2:
 with col3:
     priority = st.selectbox("Priority", ["low", "medium", "high"], index=2)
 
-if st.button("Add task"):
-    st.session_state.tasks.append(
-        {"title": task_title, "duration_minutes": int(duration), "priority": priority}
-    )
+WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+col4, col5 = st.columns(2)
+with col4:
+    frequency = st.selectbox("Repeats", ["daily", "weekly", "once"])
+with col5:
+    # Only relevant for weekly tasks; ignored otherwise.
+    weekday_name = st.selectbox("On (weekly only)", WEEKDAYS)
 
-if st.session_state.tasks:
+if st.button("Add task"):
+    # Find the pet by name, or create it and attach it to the owner.
+    pet = next((p for p in owner.pets if p.name == pet_name), None)
+    if pet is None:
+        pet = Pet(pet_name, species)
+        owner.add_pet(pet)
+    weekday = WEEKDAYS.index(weekday_name) if frequency == "weekly" else None
+    pet.add_task(Task(task_title, int(duration), priority, frequency=frequency, weekday=weekday))
+
+# Show the live task list straight from the owner's pets, with a status filter.
+status = st.selectbox("Show", ["all", "todo", "done"])
+if status == "todo":
+    tasks = owner.task_by_status(done=False)
+elif status == "done":
+    tasks = owner.task_by_status(done=True)
+else:
+    tasks = owner.list_tasks()
+if tasks:
     st.write("Current tasks:")
-    st.table(st.session_state.tasks)
+    st.table(
+        [
+            {
+                "pet": next(p.name for p in owner.pets if t in p.tasks),
+                "title": t.title,
+                "duration_minutes": t.duration_minutes,
+                "priority": t.priority,
+                "done": t.done,
+            }
+            for t in tasks
+        ]
+    )
 else:
     st.info("No tasks yet. Add one above.")
 
@@ -74,15 +110,15 @@ st.subheader("Build Schedule")
 st.caption("This button should call your scheduling logic once you implement it.")
 
 if st.button("Generate schedule"):
-    st.warning(
-        "Not implemented yet. Next step: create your scheduling logic (classes/functions) and call it here."
-    )
-    st.markdown(
-        """
-Suggested approach:
-1. Design your UML (draft).
-2. Create class stubs (no logic).
-3. Implement scheduling behavior.
-4. Connect your scheduler here and display results.
-"""
-    )
+    schedule = owner.scheduler.build_schedule(owner, date.today())
+    if schedule:
+        st.success(f"Planned {len(schedule)} task(s) for today.")
+        st.text(owner.scheduler.explain())
+
+        conflicts = owner.scheduler.find_conflicts(schedule)
+        if conflicts:
+            st.warning(f"{len(conflicts)} time conflict(s) detected:")
+            for earlier, later in conflicts:
+                st.write(f"• “{earlier.title}” overlaps “{later.title}”")
+    else:
+        st.info("No tasks to schedule yet. Add some tasks above.")
