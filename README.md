@@ -79,18 +79,44 @@ Sample test output:
 # Paste your pytest output here
 ```
 
-## 📐 Smarter Scheduling
+## ✨ Features
 
-Beyond building a basic daily plan, PawPal+ implements four "smarter scheduling"
-features. Each is documented below with the method that implements it (all live in
-`pawpal_system.py`).
+The scheduling logic lives in `pawpal_system.py`. Each feature below describes the
+actual algorithm implemented, not just the name.
 
-| Feature | Method(s) | Notes |
-|---------|-----------|-------|
-| Sorting | 'Scheduler.sort_by_time()', `Scheduler.order_by_priority()` | Chronological + high→low priority ordering |
-| Filtering | `Owner.filter_tasks()`, `Owner.task_by_status()`, `Owner.tasks_for_pet()` | By pet name and/or completion status |
-| Conflict detection | `Scheduler.find_conflicts()`, `Scheduler.conflict_warning()` | Flags overlapping time windows |
-| Recurring tasks | `Task.next_occurrence()`, `Pet.complete_task()`, `Owner.mark_task_complete()` | Auto-creates the next daily/weekly instance |
+- **Priority-first greedy scheduling** — `Scheduler.build_schedule()` gathers every
+  unfinished task that is due on the chosen day, orders them highest → lowest
+  priority, then places each into the *earliest* free slot in the 08:00–20:00 day
+  window (scanned in 15-minute steps) that doesn't overlap a blocked time or an
+  already-placed task. Tasks that can't fit anywhere stay unscheduled.
+- **Sorting by time and by priority** — `Scheduler.sort_by_time()` orders tasks
+  chronologically by `scheduled_at` (unscheduled tasks sort to the end via
+  `datetime.max`); `Scheduler.order_by_priority()` sorts by a rank map
+  (high=0, medium=1, low=2), with unknown priorities sorted last.
+- **Conflict warnings** — `Scheduler.find_conflicts()` sorts scheduled tasks by start
+  time and sweeps neighbor-by-neighbor, flagging a pair whenever one task is still
+  running when the next begins (half-open `[start, end)` intervals, so a task ending
+  exactly when the next starts is *not* a conflict). `Scheduler.conflict_warning()`
+  formats those pairs into a human-readable string (empty when there are none).
+- **Filtering** — `Owner.filter_tasks()` filters by pet name and/or completion
+  status, each filter optional; `Owner.task_by_status()` and `Owner.tasks_for_pet()`
+  are the single-axis shortcuts.
+- **Daily & weekly recurrence** — completing a recurring task via
+  `Pet.complete_task()` / `Owner.mark_task_complete()` auto-spawns its next instance
+  through `Task.next_occurrence()` (daily → +1 day, weekly → +7 days) with a fresh id
+  and any deadline rolled forward keeping its time of day. `Task.is_due_on()` decides
+  whether a task appears in a given day's plan.
+- **Blocked times, overdue, and progress** — `Owner.block_time()` reserves ranges the
+  scheduler refuses to place into (`Scheduler.fits_in_window()`); `Task.is_overdue()`
+  / `Owner.overdue_tasks()` flag past-deadline unfinished tasks; `Pet.progress()`
+  reports the fraction of a pet's tasks completed.
+
+| Feature | Method(s) |
+|---------|-----------|
+| Sorting | `Scheduler.sort_by_time()`, `Scheduler.order_by_priority()` |
+| Filtering | `Owner.filter_tasks()`, `Owner.task_by_status()`, `Owner.tasks_for_pet()` |
+| Conflict detection | `Scheduler.find_conflicts()`, `Scheduler.conflict_warning()` |
+| Recurring tasks | `Task.next_occurrence()`, `Pet.complete_task()`, `Owner.mark_task_complete()` |
 
 
 ## Testing PalPaw+.
@@ -122,14 +148,92 @@ test\test_pawpal.py .....                                                       
 
 
 
-## 📸 Demo Walkthrough
+## Demo Walkthrough
 
-Describe your app in numbered steps so a reader can follow along without watching a video:
+Launch the Streamlit app with:
 
-1. <!-- Describe this step -->
-2. <!-- Describe this step -->
-3. <!-- Describe this step -->
-4. <!-- Describe this step -->
-5. <!-- Add more steps as needed -->
+```bash
+streamlit run app.py
+```
 
-**Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->
+### What you can do in the UI
+
+- **Set up owner & pet** — enter an owner name, a pet name, and pick a species
+  (dog / cat / other).
+- **Add tasks** — give each task a title, duration (minutes), and priority
+  (low / medium / high), and choose how it repeats (daily / weekly / once). Weekly
+  tasks also pick the weekday they recur on.
+- **Browse the task list** — filter by **pet**, by **status** (all / todo / done),
+  and re-sort by **priority** or **scheduled time**. Results render as a table
+  showing pet, duration, priority, repeat rule, scheduled time, and done status.
+- **Generate the schedule** — one click builds today's plan, shows it as a
+  time-ordered table, surfaces a conflict warning (or a green "no conflicts" note),
+  and offers a "Why this plan?" expander with the scheduler's reasoning.
+
+### Example workflow
+
+1. Enter owner **Jordan** and pet **Mochi** (dog).
+2. Add a few tasks — e.g. "Morning walk" (30 min, high), "Feeding" (10 min, high),
+   "Evening play" (25 min, medium) — some set to repeat **daily**.
+3. In **Current tasks**, filter to Mochi and sort by **priority** to confirm the
+   high-priority tasks lead.
+4. Click **Generate schedule** to place the tasks into today's 08:00–20:00 window.
+5. Read the time-ordered plan; if two tasks collide, the app shows a conflict warning.
+6. Mark a daily task complete to watch its next occurrence appear automatically.
+
+### Key scheduler behaviors on display
+
+- **Sorting** — the plan is always shown in chronological order, and the task list
+  can be flipped between priority and time ordering.
+- **Priority-first placement** — the highest-priority task claims the earliest slot.
+- **Conflict warnings** — overlapping time windows are flagged in plain language.
+- **Recurrence** — completing a daily/weekly task spawns its next instance.
+
+### Sample CLI output
+
+Running the terminal demo shows the same sorting, filtering, and conflict logic
+without the UI:
+
+```text
+$ python main.py
+
+PawPal+ demo for Alex (Tuesday, July 07, 2026)
+
+[sort] schedule in scrambled order:
+  09:30  Midday play
+  09:00  Evening walk
+  08:45  Feed breakfast
+  08:00  Morning walk
+
+[sort] after scheduler.sort_by_time():
+  08:00  Morning walk
+  08:45  Feed breakfast
+  09:00  Evening walk
+  09:30  Midday play
+
+[filter] not-yet-done tasks (filter_tasks(done=False)):
+  Evening walk
+  Morning walk
+  Midday play
+  Feed breakfast
+
+[filter] completed tasks (filter_tasks(done=True)):
+  Litter box cleanup
+
+[filter] Rex's tasks (filter_tasks(pet_name='Rex')):
+  Evening walk
+  Morning walk
+  Midday play
+
+[filter] Rex's unfinished tasks (both filters combined):
+  Evening walk
+  Morning walk
+  Midday play
+
+[conflict] two tasks placed at 08:00 (different pets):
+WARNING: 1 scheduling conflict(s) detected:
+  'Extra walk' (08:00) overlaps 'Extra feeding' (08:00)
+
+[conflict] a non-overlapping pair (sanity check):
+  No conflicts detected.
+```

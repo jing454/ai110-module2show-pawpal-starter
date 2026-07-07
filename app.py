@@ -13,36 +13,9 @@ st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 st.title("🐾 PawPal+")
 
 st.markdown(
-    """
-Welcome to the PawPal+ starter app.
-
-This file is intentionally thin. It gives you a working Streamlit app so you can start quickly,
-but **it does not implement the project logic**. Your job is to design the system and build it.
-
-Use this app as your interactive demo once your backend classes/functions exist.
-"""
+    "A pet care planning assistant. Add care tasks for your pets, then build a "
+    "time-ordered daily plan that respects priority and flags scheduling conflicts."
 )
-
-with st.expander("Scenario", expanded=True):
-    st.markdown(
-        """
-**PawPal+** is a pet care planning assistant. It helps a pet owner plan care tasks
-for their pet(s) based on constraints like time, priority, and preferences.
-
-You will design and implement the scheduling logic and connect it to this Streamlit UI.
-"""
-    )
-
-with st.expander("What you need to build", expanded=True):
-    st.markdown(
-        """
-At minimum, your system should:
-- Represent pet care tasks (what needs to happen, how long it takes, priority)
-- Represent the pet and the owner (basic info and preferences)
-- Build a plan/schedule for a day that chooses and orders tasks based on constraints
-- Explain the plan (why each task was chosen and when it happens)
-"""
-    )
 
 st.divider()
 
@@ -79,46 +52,92 @@ if st.button("Add task"):
     weekday = WEEKDAYS.index(weekday_name) if frequency == "weekly" else None
     pet.add_task(Task(task_title, int(duration), priority, frequency=frequency, weekday=weekday))
 
-# Show the live task list straight from the owner's pets, with a status filter.
-status = st.selectbox("Show", ["all", "todo", "done"])
-if status == "todo":
-    tasks = owner.task_by_status(done=False)
-elif status == "done":
-    tasks = owner.task_by_status(done=True)
+# Show the live task list straight from the owner's pets, with filters + sorting
+# that reuse the Owner/Scheduler methods rather than re-implementing them here.
+st.markdown("### Current tasks")
+
+
+def _pet_name_for(task: Task) -> str:
+    """The name of the pet that owns this task (matched by id, not look-alike)."""
+    return next(
+        (p.name for p in owner.pets if any(t.id == task.id for t in p.tasks)),
+        "—",
+    )
+
+
+fcol1, fcol2, fcol3 = st.columns(3)
+with fcol1:
+    pet_choices = ["all"] + [p.name for p in owner.pets]
+    pet_filter = st.selectbox("Pet", pet_choices)
+with fcol2:
+    status = st.selectbox("Show", ["all", "todo", "done"])
+with fcol3:
+    sort_by = st.selectbox("Sort by", ["priority", "scheduled time"])
+
+# filter_tasks handles both filters; None means "don't apply this one".
+tasks = owner.filter_tasks(
+    pet_name=None if pet_filter == "all" else pet_filter,
+    done=None if status == "all" else (status == "done"),
+)
+
+# Sort with the Scheduler's own methods so the UI matches the backend logic.
+if sort_by == "priority":
+    tasks = owner.scheduler.order_by_priority(tasks)
 else:
-    tasks = owner.list_tasks()
+    tasks = owner.scheduler.sort_by_time(tasks)
+
 if tasks:
-    st.write("Current tasks:")
     st.table(
         [
             {
-                "pet": next(p.name for p in owner.pets if t in p.tasks),
+                "pet": _pet_name_for(t),
                 "title": t.title,
-                "duration_minutes": t.duration_minutes,
+                "duration (min)": t.duration_minutes,
                 "priority": t.priority,
-                "done": t.done,
+                "repeats": t.frequency,
+                "scheduled": f"{t.scheduled_at:%H:%M}" if t.scheduled_at else "—",
+                "done": "✓" if t.done else "",
             }
             for t in tasks
         ]
     )
+    st.caption(f"{len(tasks)} task(s) shown.")
 else:
-    st.info("No tasks yet. Add one above.")
+    st.info("No tasks match these filters. Add one above or widen the filter.")
 
 st.divider()
 
 st.subheader("Build Schedule")
-st.caption("This button should call your scheduling logic once you implement it.")
+st.caption("Places today's unfinished tasks into the 08:00–20:00 window, highest priority first.")
 
 if st.button("Generate schedule"):
-    schedule = owner.scheduler.build_schedule(owner, date.today())
+    scheduler = owner.scheduler
+    schedule = scheduler.build_schedule(owner, date.today())
     if schedule:
-        st.success(f"Planned {len(schedule)} task(s) for today.")
-        st.text(owner.scheduler.explain())
+        st.success(f"Planned {len(schedule)} task(s) for today, in time order:")
 
-        conflicts = owner.scheduler.find_conflicts(schedule)
-        if conflicts:
-            st.warning(f"{len(conflicts)} time conflict(s) detected:")
-            for earlier, later in conflicts:
-                st.write(f"• “{earlier.title}” overlaps “{later.title}”")
+        # sort_by_time keeps the plan chronological even if build order changes.
+        st.table(
+            [
+                {
+                    "time": f"{t.scheduled_at:%H:%M}",
+                    "pet": _pet_name_for(t),
+                    "task": t.title,
+                    "duration (min)": t.duration_minutes,
+                    "priority": t.priority,
+                }
+                for t in scheduler.sort_by_time(schedule)
+            ]
+        )
+
+        # Conflict warning straight from the Scheduler ("" means none detected).
+        warning = scheduler.conflict_warning(schedule)
+        if warning:
+            st.warning(warning)
+        else:
+            st.success("No scheduling conflicts detected. ✓")
+
+        with st.expander("Why this plan? (scheduler explanation)"):
+            st.text(scheduler.explain())
     else:
         st.info("No tasks to schedule yet. Add some tasks above.")

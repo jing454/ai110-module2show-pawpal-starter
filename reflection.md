@@ -67,11 +67,14 @@ The scheduler func is a "first come, first served" by priority. it places the mo
 - How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
 - What kinds of prompts or questions were most helpful?
 
+Used to create a system design class for the app. used it for debugging and understanding code whenever needed. The prompt "help me understand the code in 10 seconds" benefitted me since it caused the model to explain the code in simple terms that are easy to understand.
+
 **b. Judgment and verification**
 
 - Describe one moment where you did not accept an AI suggestion as-is.
 - How did you evaluate or verify what the AI suggested?
 
+There was a moment during the system design phase when it was trying to add an element in the class of owner but it should shouldve been in pets instead. I read the system design and made sure that it had all the correct elements and no additional element was added that was unneeded. I also read through the code that the ai provided to ensure that the logic is correct and understandable.
 ---
 
 ## 4. Testing and Verification
@@ -81,10 +84,22 @@ The scheduler func is a "first come, first served" by priority. it places the mo
 - What behaviors did you test?
 - Why were these tests important?
 
+i tested:
+1. add a pet
+2. edit the task (done or not done) (add and delete task)
+4. see if the progress of a task
+6. set time constraint (like being able to block off certain time in a day or even certain days)
+7. some calender system so it's easy to read the layout of how it's proceed 
+8. some kind of time limtation for each task
+
+These test are important since they should be the core response of the app where it shouldnt break if these cases were to happen or else the program may break or not act correctly when these edge cases arises.
+
 **b. Confidence**
 
 - How confident are you that your scheduler works correctly?
 - What edge cases would you test next if you had more time?
+
+Based on the test, the scheduler should work fine since it passed all the edge cases that was stated above. If i had more time i wouldv'e prob tested the user interface to ensure that the users can understand the program and that it returns the correct prompt. Additionally, i would probably test more edge cases to ensure that everything is perfect.
 
 ---
 
@@ -94,10 +109,16 @@ The scheduler func is a "first come, first served" by priority. it places the mo
 
 - What part of this project are you most satisfied with?
 
+The system design and how the project turned out
+
 **b. What you would improve**
 
 - If you had another iteration, what would you improve or redesign?
 
+The UX is a little weird. I would perhaps change the scheduling so it look easier to understand. 
+
 **c. Key takeaway**
 
 - What is one important thing you learned about designing systems or working with AI on this project?
+
+Always look through the code that it provided and make sure there is no issue from system design to code design to testing. Ai is a tool that should be used on anything that takes a long time for efficiency but also check what it gives you. 
