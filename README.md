@@ -93,6 +93,35 @@ features. Each is documented below with the method that implements it (all live 
 | Recurring tasks | `Task.next_occurrence()`, `Pet.complete_task()`, `Owner.mark_task_complete()` | Auto-creates the next daily/weekly instance |
 
 
+## Testing PalPaw+.
+
+# run: 
+python -m pytest
+
+# Testing: 
+1. program should mark the task_done to be done after the task is completed
+2. adding a task should increase the task count foor that pet by 1
+3. Schedule should be sorted by most important to least important when being placed into the schedule 
+4. a recurr task should be listed again on the schedule when completed
+5. 2 task with same time should be listed as "conflict"
+
+# result:
+(.venv) PS C:\Users\11791\OneDrive\Desktop\ai110-module2show-pawpal-starter> python -m pytest
+========================================================================== test session starts ==========================================================================
+platform win32 -- Python 3.14.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Users\11791\OneDrive\Desktop\ai110-module2show-pawpal-starter
+plugins: anyio-4.14.0
+collected 5 items                                                                                                                                                        
+
+test\test_pawpal.py .....                                                                                                                                          [100%]
+
+=========================================================================== 5 passed in 0.06s ===========================================================================
+
+# Confidence level:
+4
+
+
+
 ## 📸 Demo Walkthrough
 
 Describe your app in numbered steps so a reader can follow along without watching a video:
